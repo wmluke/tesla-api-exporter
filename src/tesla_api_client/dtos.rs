@@ -98,7 +98,7 @@ pub struct VehicleDriveState {
     pub native_type: String,
     pub power: i32,
     pub shift_state: Option<String>,
-    pub speed: Option<f32>,
+    pub speed: Option<f64>,
     pub timestamp: i64,
 }
 

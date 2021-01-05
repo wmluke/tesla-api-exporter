@@ -1,0 +1,22 @@
+refresh_rate: 30 seconds
+appenders:
+  stdout:
+    kind: console
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} {h({l:>6.6})} {t:<6.6} -> {m} [{I}]{n}   - fooooo barrr"
+root:
+  level: info
+  appenders:
+    - stdout
+#loggers:
+#  unifi:
+#    level: info
+#  web:
+#    level: info
+#  rocket:
+#    level: info
+##  funny rocket logging https://github.com/SergioBenitez/Rocket/issues/963
+#  _:
+#    level: info
+#  launch:
+#    level: info

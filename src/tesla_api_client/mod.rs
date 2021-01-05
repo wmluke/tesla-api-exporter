@@ -3,6 +3,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::Result;
+use log::warn;
 use reqwest::{header, StatusCode};
 use reqwest::blocking::Client;
 
@@ -182,7 +183,7 @@ impl TeslaApiClient {
         Ok(vehicle)
     }
 
-    pub fn wake_vehicle_poll(&self, vehicle_id: &i64) -> anyhow::Result<Vehicle> {
+    pub fn wake_vehicle_poll(&self, vehicle_id: &i64) -> anyhow::Result<()> {
         let mut vehicle = self.wake_vehicle(vehicle_id)?;
         let mut count = 0;
         while vehicle.is_asleep() && count < 6 {
@@ -193,7 +194,7 @@ impl TeslaApiClient {
         if vehicle.is_asleep() {
             return Err(TeslaApiError::WakeTimeout().into());
         }
-        Ok(vehicle)
+        Ok(())
     }
 
     pub fn fetch_all_vehicles_data(&self) -> anyhow::Result<Vec<VehicleData>> {
@@ -202,7 +203,9 @@ impl TeslaApiClient {
             .into_iter()
             .filter_map(|v| {
                 if v.is_asleep() {
-                    self.wake_vehicle_poll(&v.id);
+                    self.wake_vehicle_poll(&v.id).unwrap_or_else(|e| {
+                        warn!("Failed to wake vehicle {:?}", e)
+                    });
                 }
                 self.fetch_vehicle_data(&v.id).ok()
             })
