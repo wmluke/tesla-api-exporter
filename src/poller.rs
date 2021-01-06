@@ -22,12 +22,12 @@ use crate::tesla_api_client::dtos::{Vehicle, VehicleData};
 use crate::tesla_api_client::TeslaApiClient;
 
 static BATTERY_LEVEL_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
-    IntGaugeVec::new(opts!("tesla_charge_state_battery_level", "Battery Level"), &["name"])
+    IntGaugeVec::new(opts!("tesla_charge_state_battery_level", "Battery Level (%)"), &["name"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static BATTERY_RANGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_charge_state_battery_range", "Battery Range"), &["name"])
+    GaugeVec::new(opts!("tesla_charge_state_battery_range", "Battery Range (Miles)"), &["name"])
         .expect("Could not create lazy GaugeVec")
 });
 
@@ -37,12 +37,47 @@ static CHARGE_RATE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
 });
 
 static SPEED_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_speed", "Vehicle speed"), &["name"])
+    GaugeVec::new(opts!("tesla_drive_state_speed", "Vehicle speed (MPH)"), &["name"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static ODOMETER_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_vehicle_state_odometer", "Vehicle odometer"), &["name"])
+    GaugeVec::new(opts!("tesla_vehicle_state_odometer", "Vehicle odometer (Miles)"), &["name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static INSIDE_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_climate_state_inside_temp", "Inside Temperature (DegC)"), &["name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static OUTSIDE_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_climate_state_outside_temp", "Outside Temperature (DegC)"), &["name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static DRIVER_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_climate_state_driver_temp_setting", "Driver's Temperature Setting (DegC)"), &["name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static PASSENGER_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_climate_state_passenger_temp_setting", "Passenger's Temperature Setting (DegC)"), &["name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static GEO_LAT_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_drive_state_latitude", "Vehicle Latitude"), &["name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static GEO_LONG_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_drive_state_longitude", "Vehicle Longitude"), &["name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static GEO_HEADING_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_drive_state_heading", "Vehicle Heading"), &["name"])
         .expect("Could not create lazy GaugeVec")
 });
 
@@ -113,18 +148,28 @@ fn collect_vehicle_metrics(vehicle: Vehicle, stop: Arc<AtomicBool>) -> Result<()
     let mut error_count = 0;
 
     while !stop.load(Ordering::SeqCst) && error_count < 10 {
-        if vehicle.is_asleep() {
-            if let Err(err) = client.wake_vehicle_poll(&vehicle.id) {
-                warn!("Failed to wake up vehicle: {:?}", err);
-            }
+        if let Err(err) = client.wake_vehicle_poll(&vehicle.id) {
+            warn!("Failed to wake up vehicle: error={:?}", err);
         }
+
         match client.fetch_vehicle_data(&vehicle.id) {
             Ok(vehicle_data) => {
                 BATTERY_LEVEL_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(i64::from(vehicle_data.charge_state.battery_level));
                 BATTERY_RANGE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.charge_state.battery_range);
                 CHARGE_RATE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.charge_state.charge_rate);
+
                 SPEED_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.speed.unwrap_or(0.0_f64));
                 ODOMETER_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.vehicle_state.odometer);
+
+                INSIDE_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.inside_temp);
+                OUTSIDE_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.outside_temp);
+                DRIVER_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.driver_temp_setting);
+                PASSENGER_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.passenger_temp_setting);
+
+                GEO_LAT_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.latitude);
+                GEO_LONG_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.longitude);
+                GEO_HEADING_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.heading);
+
                 let car_state = CarState::from(vehicle_data);
                 let duration = car_state.wait();
                 info!("Collected vehicle metrics: Vehicle=\"{}\" CarState={} Waiting={:?}", &vehicle.display_name, car_state, duration);
@@ -231,6 +276,41 @@ impl Fairing for Poller {
         prometheus
             .registry()
             .register(Box::new(ODOMETER_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(INSIDE_TEMPERATURE_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(OUTSIDE_TEMPERATURE_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(DRIVER_TEMPERATURE_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(PASSENGER_TEMPERATURE_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(GEO_LAT_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(GEO_LONG_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(GEO_HEADING_GAUGE.clone()))
             .unwrap();
 
         Ok(rocket

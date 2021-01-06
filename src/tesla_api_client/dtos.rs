@@ -89,9 +89,9 @@ pub struct VehicleData {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleDriveState {
     pub gps_as_of: i64,
-    pub heading: f32,
-    pub latitude: f32,
-    pub longitude: f32,
+    pub heading: f64,
+    pub latitude: f64,
+    pub longitude: f64,
     pub native_latitude: f32,
     pub native_location_supported: i32,
     pub native_longitude: f32,
