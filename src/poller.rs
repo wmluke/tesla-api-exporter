@@ -22,73 +22,73 @@ use crate::tesla_api_client::dtos::{Vehicle, VehicleData};
 use crate::tesla_api_client::TeslaApiClient;
 
 static BATTERY_LEVEL_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
-    IntGaugeVec::new(opts!("tesla_charge_state_battery_level", "Battery Level (%)"), &["name"])
+    IntGaugeVec::new(opts!("tesla_charge_state_battery_level", "Battery Level (%)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static BATTERY_RANGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_charge_state_battery_range", "Battery Range (Miles)"), &["name"])
+    GaugeVec::new(opts!("tesla_charge_state_battery_range", "Battery Range (Miles)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static CHARGE_RATE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_charge_state_charge_rate", "Battery Charge Rate"), &["name"])
+    GaugeVec::new(opts!("tesla_charge_state_charge_rate", "Battery Charge Rate"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static SPEED_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_speed", "Vehicle speed (MPH)"), &["name"])
+    GaugeVec::new(opts!("tesla_drive_state_speed", "Vehicle speed (MPH)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static ODOMETER_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_vehicle_state_odometer", "Vehicle odometer (Miles)"), &["name"])
+    GaugeVec::new(opts!("tesla_vehicle_state_odometer", "Vehicle odometer (Miles)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static INSIDE_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_inside_temp", "Inside Temperature (DegC)"), &["name"])
+    GaugeVec::new(opts!("tesla_climate_state_inside_temp", "Inside Temperature (DegC)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static OUTSIDE_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_outside_temp", "Outside Temperature (DegC)"), &["name"])
+    GaugeVec::new(opts!("tesla_climate_state_outside_temp", "Outside Temperature (DegC)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static DRIVER_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_driver_temp_setting", "Driver's Temperature Setting (DegC)"), &["name"])
+    GaugeVec::new(opts!("tesla_climate_state_driver_temp_setting", "Driver's Temperature Setting (DegC)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static PASSENGER_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_passenger_temp_setting", "Passenger's Temperature Setting (DegC)"), &["name"])
+    GaugeVec::new(opts!("tesla_climate_state_passenger_temp_setting", "Passenger's Temperature Setting (DegC)"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static GEO_LAT_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_latitude", "Vehicle Latitude"), &["name"])
+    GaugeVec::new(opts!("tesla_drive_state_latitude", "Vehicle Latitude"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static GEO_LONG_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_longitude", "Vehicle Longitude"), &["name"])
+    GaugeVec::new(opts!("tesla_drive_state_longitude", "Vehicle Longitude"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static GEO_HEADING_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_heading", "Vehicle Heading"), &["name"])
+    GaugeVec::new(opts!("tesla_drive_state_heading", "Vehicle Heading"), &["name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 #[derive(Debug)]
-pub enum CarState {
-    Parked(VehicleData),
-    Charging(VehicleData),
-    Driving(VehicleData),
+pub enum CarState<'a> {
+    Parked(&'a VehicleData),
+    Charging(&'a VehicleData),
+    Driving(&'a VehicleData),
 }
 
-impl CarState {
+impl<'a> CarState<'a> {
     pub fn wait(&self) -> Duration {
         match self {
             CarState::Parked(_) => {
@@ -108,7 +108,7 @@ impl CarState {
     }
 }
 
-impl Display for CarState {
+impl<'a> Display for CarState<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             CarState::Parked(_) => {
@@ -124,18 +124,18 @@ impl Display for CarState {
     }
 }
 
-impl From<VehicleData> for CarState {
-    fn from(v: VehicleData) -> Self {
+impl<'a> From<&'a VehicleData> for CarState<'a> {
+    fn from(v: &'a VehicleData) -> Self {
         let speed = v.drive_state.speed.unwrap_or_default();
         let shift = v.drive_state.shift_state.as_deref().unwrap_or_default();
         if shift.eq("R") || shift.eq("D") || shift.eq("N") || speed > 0.0 {
-            return CarState::Driving(v);
+            return CarState::Driving(&v);
         }
         let charging_state = v.charge_state.charging_state.clone();
         if charging_state.eq("Disconnected") {
-            return CarState::Parked(v);
+            return CarState::Parked(&v);
         }
-        CarState::Charging(v)
+        CarState::Charging(&v)
     }
 }
 
@@ -154,23 +154,57 @@ fn collect_vehicle_metrics(vehicle: Vehicle, stop: Arc<AtomicBool>) -> Result<()
 
         match client.fetch_vehicle_data(&vehicle.id) {
             Ok(vehicle_data) => {
-                BATTERY_LEVEL_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(i64::from(vehicle_data.charge_state.battery_level));
-                BATTERY_RANGE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.charge_state.battery_range);
-                CHARGE_RATE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.charge_state.charge_rate);
+                let car_state = CarState::from(&vehicle_data);
 
-                SPEED_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.speed.unwrap_or(0.0_f64));
-                ODOMETER_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.vehicle_state.odometer);
+                BATTERY_LEVEL_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(i64::from(vehicle_data.charge_state.battery_level));
 
-                INSIDE_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.inside_temp);
-                OUTSIDE_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.outside_temp);
-                DRIVER_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.driver_temp_setting);
-                PASSENGER_TEMPERATURE_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.climate_state.passenger_temp_setting);
+                BATTERY_RANGE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.battery_range);
 
-                GEO_LAT_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.latitude);
-                GEO_LONG_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.longitude);
-                GEO_HEADING_GAUGE.with_label_values(&[&vehicle_data.display_name]).set(vehicle_data.drive_state.heading);
+                CHARGE_RATE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.charge_rate);
 
-                let car_state = CarState::from(vehicle_data);
+                SPEED_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.drive_state.speed.unwrap_or(0.0_f64));
+
+                ODOMETER_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.vehicle_state.odometer);
+
+                INSIDE_TEMPERATURE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.climate_state.inside_temp);
+
+                OUTSIDE_TEMPERATURE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.climate_state.outside_temp);
+
+                DRIVER_TEMPERATURE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.climate_state.driver_temp_setting);
+
+                PASSENGER_TEMPERATURE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.climate_state.passenger_temp_setting);
+
+                GEO_LAT_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.drive_state.latitude);
+
+                GEO_LONG_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.drive_state.longitude);
+
+                GEO_HEADING_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.drive_state.heading);
+
+
                 let duration = car_state.wait();
                 info!("Collected vehicle metrics: Vehicle=\"{}\" CarState={} Waiting={:?}", &vehicle.display_name, car_state, duration);
                 sleep(duration);
