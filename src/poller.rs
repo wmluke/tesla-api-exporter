@@ -31,13 +31,43 @@ static BATTERY_RANGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
         .expect("Could not create lazy GaugeVec")
 });
 
+static BATTERY_EST_RANGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_charge_state_est_battery_range", "Estimated Battery Range (Miles)"), &["car_name", "car_state"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static BATTERY_IDEAL_RANGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_charge_state_ideal_battery_range", "Ideal Battery Range (Miles)"), &["car_name", "car_state"])
+        .expect("Could not create lazy GaugeVec")
+});
+
 static CHARGE_RATE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
     GaugeVec::new(opts!("tesla_charge_state_charge_rate", "Battery Charge Rate"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
+static CHARGER_VOLTAGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_charge_state_charger_voltage", "Charger Voltage"), &["car_name", "car_state"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static CHARGER_POWER_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_charge_state_charger_power", "Charger Power"), &["car_name", "car_state"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static CHARGER_ACTUAL_CURRENT_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_charge_state_charger_actual_current", "Charger Actual Current"), &["car_name", "car_state"])
+        .expect("Could not create lazy GaugeVec")
+});
+
 static SPEED_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
     GaugeVec::new(opts!("tesla_drive_state_speed", "Vehicle speed (MPH)"), &["car_name", "car_state"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static POWER_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_drive_state_power", "Vehicle Power"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
@@ -161,13 +191,37 @@ fn collect_vehicle_metrics(client: TeslaApiClient, vehicle: Vehicle, stop: Arc<A
                     .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
                     .set(vehicle_data.charge_state.battery_range);
 
+                BATTERY_EST_RANGE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.est_battery_range);
+
+                BATTERY_IDEAL_RANGE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.ideal_battery_range);
+
                 CHARGE_RATE_GAUGE
                     .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
                     .set(vehicle_data.charge_state.charge_rate);
 
+                CHARGER_VOLTAGE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.charger_voltage);
+
+                CHARGER_POWER_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.charger_power);
+
+                CHARGER_ACTUAL_CURRENT_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.charger_actual_current);
+
                 SPEED_GAUGE
                     .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
                     .set(vehicle_data.drive_state.speed.unwrap_or(0.0_f64));
+
+                POWER_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.drive_state.power);
 
                 ODOMETER_GAUGE
                     .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
@@ -297,12 +351,42 @@ impl Fairing for Poller {
 
         prometheus
             .registry()
+            .register(Box::new(BATTERY_EST_RANGE_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(BATTERY_IDEAL_RANGE_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(CHARGER_VOLTAGE_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(CHARGER_POWER_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(CHARGER_ACTUAL_CURRENT_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
             .register(Box::new(CHARGE_RATE_GAUGE.clone()))
             .unwrap();
 
         prometheus
             .registry()
             .register(Box::new(SPEED_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(POWER_GAUGE.clone()))
             .unwrap();
 
         prometheus
