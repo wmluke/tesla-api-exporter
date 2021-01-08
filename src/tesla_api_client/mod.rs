@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::Result;
 use log::warn;
-use reqwest::{header, StatusCode};
-use reqwest::blocking::Client;
+use ureq::{Agent, Error, Error::Status, Request};
 
 use crate::tesla_api_client::dtos::{
     AuthToken, ErrorReply, Reply, TeslaApiError, Vehicle, VehicleData,
@@ -18,125 +16,113 @@ static CLIENT_ID: &str = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef
 static CLIENT_SECRET: &str = "c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3";
 static USER_AGENT: &str = "tesla-metrics";
 
-fn create_authenticated_client(access_token: &str) -> Result<Client> {
-    let mut headers = header::HeaderMap::new();
-    headers.insert(
-        header::USER_AGENT,
-        header::HeaderValue::from_static(USER_AGENT),
-    );
-    headers.insert(
-        header::AUTHORIZATION,
-        header::HeaderValue::from_str(&format!("Bearer {}", access_token)).unwrap(),
-    );
-
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .connection_verbose(true)
-        .build()?;
-    Ok(client)
-}
-
 #[derive(Debug, Clone)]
 pub struct TeslaApiClient {
-    client: Client,
+    agent: Agent,
     auth_token: AuthToken,
 }
 
 impl TeslaApiClient {
     pub fn authenticate(email: &str, password: &str) -> Result<TeslaApiClient> {
-        let mut map = HashMap::new();
-        map.insert("grant_type", "password");
-        map.insert("client_id", CLIENT_ID);
-        map.insert("client_secret", CLIENT_SECRET);
-        map.insert("email", email);
-        map.insert("password", password);
+        let agent: Agent = ureq::AgentBuilder::new()
+            .timeout_read(Duration::from_secs(5))
+            .timeout_write(Duration::from_secs(5))
+            .build();
 
-        let auth_client = reqwest::blocking::Client::new();
         let api_url = &format!(
             "{api_url}/oauth/token?grant_type=password",
             api_url = API_URL
         );
-        let response = auth_client
+
+        let result = agent
             .post(api_url)
-            .header(
-                header::USER_AGENT,
-                header::HeaderValue::from_static(USER_AGENT),
+            .set("User-Agent", USER_AGENT,
             )
-            .json(&map)
-            .send()?;
+            .send_json(ureq::json!({
+                "grant_type": "password",
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "email": email,
+                "password": password,
+            }));
 
-        let status = &response.status();
-
-        if status == &StatusCode::UNAUTHORIZED {
-            return Err(TeslaApiError::LoginFailure.into());
+        match result {
+            Err(Status(401, _)) => {
+                return Err(TeslaApiError::LoginFailure.into());
+            }
+            Err(Status(_, response)) => {
+                let text: String = response.into_string()?;
+                let error_reply: ErrorReply = serde_json::from_str(&text)?;
+                return Err(TeslaApiError::from(error_reply).into());
+            }
+            Err(Error::Transport(_)) => {
+                return Err(TeslaApiError::Unknown.into());
+            }
+            Ok(response) => {
+                let auth_token = response
+                    .into_json::<AuthToken>()?;
+                Ok(TeslaApiClient { agent, auth_token })
+            }
         }
-
-        if !status.is_success() {
-            let text: String = response.text()?;
-            let error_reply: ErrorReply = serde_json::from_str(&text)?;
-            // let error_reply = &response.json::<ErrorReply>()?;
-            return Err(TeslaApiError::from(error_reply).into());
-        }
-
-        let auth_token = response
-            .json::<AuthToken>()?;
-
-        let client = create_authenticated_client(&auth_token.access_token)?;
-
-        Ok(TeslaApiClient { client, auth_token })
     }
 
     pub fn refresh_auth(&mut self) -> anyhow::Result<()> {
-        let mut map = HashMap::new();
-        map.insert("grant_type", "refresh_token");
-        map.insert("client_id", CLIENT_ID);
-        map.insert("client_secret", CLIENT_SECRET);
-        map.insert("refresh_token", &self.auth_token.refresh_token);
-
-        let auth_client = reqwest::blocking::Client::new();
         let api_url = &format!(
             "{api_url}/oauth/token?grant_type=refresh_token",
             api_url = API_URL
         );
-        let response = auth_client
-            .post(api_url)
-            .header(
-                header::USER_AGENT,
-                header::HeaderValue::from_static(USER_AGENT),
-            )
-            .json(&map)
-            .send()?;
+        let result = self.http_post(api_url)
+            .send_json(ureq::json!({
+                "grant_type": "refresh_token",
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "refresh_token": &self.auth_token.refresh_token,
+            }));
 
-        let status = &response.status();
-        if !status.is_success() {
-            let error_reply = response.json::<ErrorReply>()?;
-            return Err(TeslaApiError::from(error_reply).into());
+        match result {
+            Err(Status(401, _)) => {
+                return Err(TeslaApiError::LoginFailure.into());
+            }
+            Err(Status(_, response)) => {
+                let text: String = response.into_string()?;
+                let error_reply: ErrorReply = serde_json::from_str(&text)?;
+                return Err(TeslaApiError::from(error_reply).into());
+            }
+            Err(Error::Transport(_)) => {
+                return Err(TeslaApiError::Unknown.into());
+            }
+            Ok(response) => {
+                self.auth_token = response
+                    .into_json::<AuthToken>()?;
+                Ok(())
+            }
         }
-
-        self.auth_token = response
-            .json::<AuthToken>()?;
-
-        self.client = create_authenticated_client(&self.auth_token.access_token)?;
-        Ok(())
     }
 
     pub fn fetch_vehicles(&self) -> anyhow::Result<Vec<Vehicle>> {
         let api_url = format!("{api_url}/api/1/vehicles", api_url = API_URL);
-        let response = self
-            .client
-            .get(&api_url)
-            .send()?;
+        let result = self
+            .http_get(&api_url)
+            .call();
 
-        let status = &response.status();
-        if !status.is_success() {
-            let error_reply = response.json::<ErrorReply>()?;
-            return Err(TeslaApiError::from(error_reply).into());
+        match result {
+            Err(Status(401, _)) => {
+                return Err(TeslaApiError::LoginFailure.into());
+            }
+            Err(Status(_, response)) => {
+                let text: String = response.into_string()?;
+                let error_reply: ErrorReply = serde_json::from_str(&text)?;
+                return Err(TeslaApiError::from(error_reply).into());
+            }
+            Err(Error::Transport(_)) => {
+                return Err(TeslaApiError::Unknown.into());
+            }
+            Ok(response) => {
+                let reply = response
+                    .into_json::<Reply<Vec<Vehicle>>>()?;
+                Ok(reply.response)
+            }
         }
-
-        let reply = response
-            .json::<Reply<Vec<Vehicle>>>()?;
-
-        Ok(reply.response)
     }
 
     pub fn fetch_vehicle_data(&self, vehicle_id: &i64) -> anyhow::Result<VehicleData> {
@@ -146,22 +132,26 @@ impl TeslaApiClient {
             id = vehicle_id
         );
 
-        let response = self.client.get(&api_url).send()?;
+        let result = self.http_get(&api_url).call();
 
-        let status = &response.status();
-
-        if status == &StatusCode::UNAUTHORIZED {
-            return Err(TeslaApiError::LoginFailure.into());
+        match result {
+            Err(Status(401, _)) => {
+                return Err(TeslaApiError::LoginFailure.into());
+            }
+            Err(Status(_, response)) => {
+                let text: String = response.into_string()?;
+                let error_reply: ErrorReply = serde_json::from_str(&text)?;
+                return Err(TeslaApiError::from(error_reply).into());
+            }
+            Err(Error::Transport(_)) => {
+                return Err(TeslaApiError::Unknown.into());
+            }
+            Ok(response) => {
+                let reply = response.into_json::<Reply<VehicleData>>()?;
+                Ok(reply.response)
+            }
         }
 
-        if !status.is_success() {
-            let error_reply = response.json::<ErrorReply>()?;
-            return Err(TeslaApiError::from(error_reply).into());
-        }
-
-        let reply = response.json::<Reply<VehicleData>>()?;
-
-        Ok(reply.response)
     }
 
     pub fn wake_vehicle(&self, vehicle_id: &i64) -> anyhow::Result<Vehicle> {
@@ -171,16 +161,25 @@ impl TeslaApiClient {
             id = vehicle_id
         );
 
-        let response = self.client.post(&api_url).send()?;
+        let result = self.http_post(&api_url).call();
 
-        let status = &response.status();
-        if !status.is_success() {
-            let error_reply = response.json::<ErrorReply>()?;
-            return Err(TeslaApiError::from(error_reply).into());
+        match result {
+            Err(Status(401, _)) => {
+                return Err(TeslaApiError::LoginFailure.into());
+            }
+            Err(Status(_, response)) => {
+                let text: String = response.into_string()?;
+                let error_reply: ErrorReply = serde_json::from_str(&text)?;
+                return Err(TeslaApiError::from(error_reply).into());
+            }
+            Err(Error::Transport(_)) => {
+                return Err(TeslaApiError::Unknown.into());
+            }
+            Ok(response) => {
+                let vehicle = response.into_json::<Reply<Vehicle>>()?.response;
+                Ok(vehicle)
+            }
         }
-
-        let vehicle = response.json::<Reply<Vehicle>>()?.response;
-        Ok(vehicle)
     }
 
     pub fn wake_vehicle_poll(&self, vehicle_id: &i64) -> anyhow::Result<()> {
@@ -203,12 +202,24 @@ impl TeslaApiClient {
             .into_iter()
             .filter_map(|v| {
                 if v.is_asleep() {
-                    self.wake_vehicle_poll(&v.id).unwrap_or_else(|e| {
+                    if let Err(e) = self.wake_vehicle_poll(&v.id) {
                         warn!("Failed to wake vehicle {:?}", e)
-                    });
+                    }
                 }
                 self.fetch_vehicle_data(&v.id).ok()
             })
             .collect::<Vec<VehicleData>>())
+    }
+
+    fn http_get(&self, url: &String) -> Request {
+        self.agent.get(url)
+            .set("Authorization", &format!("Bearer {}", &self.auth_token.access_token))
+            .set("User-Agent", USER_AGENT)
+    }
+
+    fn http_post(&self, url: &String) -> Request {
+        self.agent.post(url)
+            .set("Authorization", &format!("Bearer {}", &self.auth_token.access_token))
+            .set("User-Agent", USER_AGENT)
     }
 }

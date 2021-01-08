@@ -9,8 +9,10 @@ pub enum TeslaApiError {
     VehicleUnavailable(),
     #[error("Cannot wake vehicle")]
     WakeTimeout(),
-    #[error("Unknown Error: {0:?}")]
-    Unknown(ErrorReply),
+    #[error("Unknown Tesla API Error: {0:?}")]
+    UnknownApiError(ErrorReply),
+    #[error("Unknown Error")]
+    Unknown,
 }
 
 impl From<ErrorReply> for TeslaApiError {
@@ -18,7 +20,7 @@ impl From<ErrorReply> for TeslaApiError {
         if reply.error.starts_with("vehicle unavailable:") {
             return TeslaApiError::VehicleUnavailable();
         }
-        return TeslaApiError::Unknown(reply);
+        return TeslaApiError::UnknownApiError(reply);
     }
 }
 

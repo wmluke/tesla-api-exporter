@@ -6,7 +6,7 @@ use std::thread;
 use std::thread::{JoinHandle, sleep};
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use rocket::fairing::{Fairing, Info, Kind};
@@ -22,62 +22,62 @@ use crate::tesla_api_client::dtos::{Vehicle, VehicleData};
 use crate::tesla_api_client::TeslaApiClient;
 
 static BATTERY_LEVEL_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
-    IntGaugeVec::new(opts!("tesla_charge_state_battery_level", "Battery Level (%)"), &["name", "car_state"])
+    IntGaugeVec::new(opts!("tesla_charge_state_battery_level", "Battery Level (%)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static BATTERY_RANGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_charge_state_battery_range", "Battery Range (Miles)"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_charge_state_battery_range", "Battery Range (Miles)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static CHARGE_RATE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_charge_state_charge_rate", "Battery Charge Rate"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_charge_state_charge_rate", "Battery Charge Rate"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static SPEED_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_speed", "Vehicle speed (MPH)"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_drive_state_speed", "Vehicle speed (MPH)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static ODOMETER_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_vehicle_state_odometer", "Vehicle odometer (Miles)"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_vehicle_state_odometer", "Vehicle odometer (Miles)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static INSIDE_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_inside_temp", "Inside Temperature (DegC)"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_climate_state_inside_temp", "Inside Temperature (DegC)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static OUTSIDE_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_outside_temp", "Outside Temperature (DegC)"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_climate_state_outside_temp", "Outside Temperature (DegC)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static DRIVER_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_driver_temp_setting", "Driver's Temperature Setting (DegC)"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_climate_state_driver_temp_setting", "Driver's Temperature Setting (DegC)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static PASSENGER_TEMPERATURE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_climate_state_passenger_temp_setting", "Passenger's Temperature Setting (DegC)"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_climate_state_passenger_temp_setting", "Passenger's Temperature Setting (DegC)"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static GEO_LAT_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_latitude", "Vehicle Latitude"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_drive_state_latitude", "Vehicle Latitude"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static GEO_LONG_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_longitude", "Vehicle Longitude"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_drive_state_longitude", "Vehicle Longitude"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
 static GEO_HEADING_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_drive_state_heading", "Vehicle Heading"), &["name", "car_state"])
+    GaugeVec::new(opts!("tesla_drive_state_heading", "Vehicle Heading"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
 });
 
@@ -140,10 +140,7 @@ impl<'a> From<&'a VehicleData> for CarState<'a> {
 }
 
 
-fn collect_vehicle_metrics(vehicle: Vehicle, stop: Arc<AtomicBool>) -> Result<()> {
-    let client = TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"))
-        .context("Failed to create TeslaApiClient")?;
-
+fn collect_vehicle_metrics(client: TeslaApiClient, vehicle: Vehicle, stop: Arc<AtomicBool>) -> Result<()> {
     // TODO: reset error count after some duration
     let mut error_count = 0;
 
@@ -226,10 +223,11 @@ fn start_jobs() -> Result<JobHandles> {
     for v in vehicles {
         info!("Started collecting vehicle metrics: Vehicle=\"{}\"", &v.display_name);
         let s = handles.get_stop();
+        let c = client.clone();
         handles.add_handle(thread::spawn(move || {
-            collect_vehicle_metrics(v, s).unwrap_or_else(|err| {
+            if let Err(err) = collect_vehicle_metrics(c, v, s) {
                 warn!("Failed to collect vehicle metrics: {:?}", err);
-            });
+            }
         }));
     }
     Ok(handles)

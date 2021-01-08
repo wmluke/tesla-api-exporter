@@ -77,9 +77,9 @@ fn should_wake_up_the_vehicle() -> Result<()> {
 
     let vehicle = vehicles.get(0).unwrap();
 
-    let is_online = client.wake_vehicle_poll(&vehicle.id)?.is_online();
+    let is_online = client.wake_vehicle_poll(&vehicle.id);
 
-    assert_eq!(is_online, true);
+    assert_eq!(is_online.is_ok(), true);
 
     Ok(())
 }
