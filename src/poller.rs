@@ -46,6 +46,11 @@ static CHARGE_RATE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
         .expect("Could not create lazy GaugeVec")
 });
 
+static TIME_TO_FULL_CHARGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
+    GaugeVec::new(opts!("tesla_charge_state_minutes_to_full_charge", "Time to Full Charge"), &["car_name", "car_state"])
+        .expect("Could not create lazy GaugeVec")
+});
+
 static CHARGER_VOLTAGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
     GaugeVec::new(opts!("tesla_charge_state_charger_voltage", "Charger Voltage"), &["car_name", "car_state"])
         .expect("Could not create lazy GaugeVec")
@@ -198,6 +203,10 @@ fn collect_vehicle_metrics(client: TeslaApiClient, vehicle: Vehicle, stop: Arc<A
                 BATTERY_IDEAL_RANGE_GAUGE
                     .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
                     .set(vehicle_data.charge_state.ideal_battery_range);
+
+                TIME_TO_FULL_CHARGE_GAUGE
+                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+                    .set(vehicle_data.charge_state.time_to_full_charge);
 
                 CHARGE_RATE_GAUGE
                     .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
@@ -372,6 +381,11 @@ impl Fairing for Poller {
         prometheus
             .registry()
             .register(Box::new(CHARGER_ACTUAL_CURRENT_GAUGE.clone()))
+            .unwrap();
+
+        prometheus
+            .registry()
+            .register(Box::new(TIME_TO_FULL_CHARGE_GAUGE.clone()))
             .unwrap();
 
         prometheus
