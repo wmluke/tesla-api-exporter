@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use log::warn;
-use ureq::{Agent, Error, Error::Status, Request};
+use serde::de::DeserializeOwned;
+use ureq::{Agent, Error, Error::Status, Request, Response};
 
 use crate::tesla_api_client::dtos::{
     AuthToken, ErrorReply, Reply, TeslaApiError, Vehicle, VehicleData,
@@ -21,6 +22,7 @@ pub struct TeslaApiClient {
     agent: Agent,
     auth_token: AuthToken,
 }
+
 
 impl TeslaApiClient {
     pub fn authenticate(email: &str, password: &str) -> Result<TeslaApiClient> {
@@ -46,24 +48,8 @@ impl TeslaApiClient {
                 "password": password,
             }));
 
-        match result {
-            Err(Status(401, _)) => {
-                return Err(TeslaApiError::LoginFailure.into());
-            }
-            Err(Status(_, response)) => {
-                let text: String = response.into_string()?;
-                let error_reply: ErrorReply = serde_json::from_str(&text)?;
-                return Err(TeslaApiError::from(error_reply).into());
-            }
-            Err(Error::Transport(_)) => {
-                return Err(TeslaApiError::Unknown.into());
-            }
-            Ok(response) => {
-                let auth_token = response
-                    .into_json::<AuthToken>()?;
-                Ok(TeslaApiClient { agent, auth_token })
-            }
-        }
+        let auth_token = TeslaApiClient::handle_result::<AuthToken>(result)?;
+        Ok(TeslaApiClient { agent, auth_token })
     }
 
     pub fn refresh_auth(&mut self) -> anyhow::Result<()> {
@@ -79,24 +65,21 @@ impl TeslaApiClient {
                 "refresh_token": &self.auth_token.refresh_token,
             }));
 
-        match result {
-            Err(Status(401, _)) => {
-                return Err(TeslaApiError::LoginFailure.into());
-            }
-            Err(Status(_, response)) => {
-                let text: String = response.into_string()?;
-                let error_reply: ErrorReply = serde_json::from_str(&text)?;
-                return Err(TeslaApiError::from(error_reply).into());
-            }
-            Err(Error::Transport(_)) => {
-                return Err(TeslaApiError::Unknown.into());
-            }
-            Ok(response) => {
-                self.auth_token = response
-                    .into_json::<AuthToken>()?;
-                Ok(())
-            }
-        }
+        self.auth_token = TeslaApiClient::handle_result::<AuthToken>(result)?;
+        Ok(())
+    }
+
+    pub fn fetch_vehicle(&self, vehicle_id: &i64) -> anyhow::Result<Vehicle> {
+        let api_url = format!("{api_url}/api/1/vehicles/{id}",
+                              api_url = API_URL,
+                              id = vehicle_id,
+        );
+        let result = self
+            .http_get(&api_url)
+            .call();
+
+        let reply = TeslaApiClient::handle_result::<Reply<Vehicle>>(result)?;
+        Ok(reply.response)
     }
 
     pub fn fetch_vehicles(&self) -> anyhow::Result<Vec<Vehicle>> {
@@ -105,24 +88,8 @@ impl TeslaApiClient {
             .http_get(&api_url)
             .call();
 
-        match result {
-            Err(Status(401, _)) => {
-                return Err(TeslaApiError::LoginFailure.into());
-            }
-            Err(Status(_, response)) => {
-                let text: String = response.into_string()?;
-                let error_reply: ErrorReply = serde_json::from_str(&text)?;
-                return Err(TeslaApiError::from(error_reply).into());
-            }
-            Err(Error::Transport(_)) => {
-                return Err(TeslaApiError::Unknown.into());
-            }
-            Ok(response) => {
-                let reply = response
-                    .into_json::<Reply<Vec<Vehicle>>>()?;
-                Ok(reply.response)
-            }
-        }
+        let reply = TeslaApiClient::handle_result::<Reply<Vec<Vehicle>>>(result)?;
+        Ok(reply.response)
     }
 
     pub fn fetch_vehicle_data(&self, vehicle_id: &i64) -> anyhow::Result<VehicleData> {
@@ -134,6 +101,11 @@ impl TeslaApiClient {
 
         let result = self.http_get(&api_url).call();
 
+        let reply = TeslaApiClient::handle_result::<Reply<VehicleData>>(result)?;
+        Ok(reply.response)
+    }
+
+    fn handle_result<T: DeserializeOwned>(result: Result<Response, Error>) -> Result<T> {
         match result {
             Err(Status(401, _)) => {
                 return Err(TeslaApiError::LoginFailure.into());
@@ -147,11 +119,16 @@ impl TeslaApiClient {
                 return Err(TeslaApiError::Unknown.into());
             }
             Ok(response) => {
-                let reply = response.into_json::<Reply<VehicleData>>()?;
-                Ok(reply.response)
+                let json: String = response.into_string()?;
+                let result: serde_json::error::Result<T> = serde_json::from_str(&json);
+                match result {
+                    Ok(reply) => Ok(reply),
+                    Err(err) => {
+                        Err(TeslaApiError::JsonDeserializationError(format!("{:?}: {}", err, json)).into())
+                    }
+                }
             }
         }
-
     }
 
     pub fn wake_vehicle(&self, vehicle_id: &i64) -> anyhow::Result<Vehicle> {
@@ -163,23 +140,8 @@ impl TeslaApiClient {
 
         let result = self.http_post(&api_url).call();
 
-        match result {
-            Err(Status(401, _)) => {
-                return Err(TeslaApiError::LoginFailure.into());
-            }
-            Err(Status(_, response)) => {
-                let text: String = response.into_string()?;
-                let error_reply: ErrorReply = serde_json::from_str(&text)?;
-                return Err(TeslaApiError::from(error_reply).into());
-            }
-            Err(Error::Transport(_)) => {
-                return Err(TeslaApiError::Unknown.into());
-            }
-            Ok(response) => {
-                let vehicle = response.into_json::<Reply<Vehicle>>()?.response;
-                Ok(vehicle)
-            }
-        }
+        let reply = TeslaApiClient::handle_result::<Reply<Vehicle>>(result)?;
+        Ok(reply.response)
     }
 
     pub fn wake_vehicle_poll(&self, vehicle_id: &i64) -> anyhow::Result<()> {

@@ -11,6 +11,8 @@ pub enum TeslaApiError {
     WakeTimeout(),
     #[error("Unknown Tesla API Error: {0:?}")]
     UnknownApiError(ErrorReply),
+    #[error("Failed to deserialize JSON: {0:?}")]
+    JsonDeserializationError(String),
     #[error("Unknown Error")]
     Unknown,
 }

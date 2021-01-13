@@ -7,7 +7,7 @@ use std::thread::{JoinHandle, sleep};
 use std::time::Duration;
 
 use anyhow::Result;
-use log::{error, info, warn};
+use log::{info, warn};
 use once_cell::sync::Lazy;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::Rocket;
@@ -18,7 +18,7 @@ use rocket_prometheus::{
 use rocket_prometheus::prometheus::GaugeVec;
 use serde::export::Formatter;
 
-use crate::tesla_api_client::dtos::{Vehicle, VehicleData};
+use crate::tesla_api_client::dtos::VehicleData;
 use crate::tesla_api_client::TeslaApiClient;
 
 static BATTERY_LEVEL_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
@@ -116,18 +116,208 @@ static GEO_HEADING_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
         .expect("Could not create lazy GaugeVec")
 });
 
-#[derive(Debug)]
-pub enum CarState<'a> {
-    Parked(&'a VehicleData),
-    Charging(&'a VehicleData),
-    Driving(&'a VehicleData),
+fn register() -> PrometheusMetrics {
+    let prometheus = PrometheusMetrics::new();
+
+    prometheus
+        .registry()
+        .register(Box::new(BATTERY_LEVEL_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(BATTERY_RANGE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(BATTERY_EST_RANGE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(BATTERY_IDEAL_RANGE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(CHARGER_VOLTAGE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(CHARGER_POWER_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(CHARGER_ACTUAL_CURRENT_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(TIME_TO_FULL_CHARGE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(CHARGE_RATE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(SPEED_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(POWER_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(ODOMETER_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(INSIDE_TEMPERATURE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(OUTSIDE_TEMPERATURE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(DRIVER_TEMPERATURE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(PASSENGER_TEMPERATURE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(GEO_LAT_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(GEO_LONG_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(GEO_HEADING_GAUGE.clone()))
+        .unwrap();
+    prometheus
 }
 
-impl<'a> CarState<'a> {
+fn record(vehicle_data: &VehicleData) -> CarState {
+    let car_state = CarState::from(vehicle_data.clone());
+
+    BATTERY_LEVEL_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(i64::from(vehicle_data.charge_state.battery_level));
+
+    BATTERY_RANGE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.battery_range);
+
+    BATTERY_EST_RANGE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.est_battery_range);
+
+    BATTERY_IDEAL_RANGE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.ideal_battery_range);
+
+    TIME_TO_FULL_CHARGE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.time_to_full_charge);
+
+    CHARGE_RATE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.charge_rate);
+
+    CHARGER_VOLTAGE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.charger_voltage);
+
+    CHARGER_POWER_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.charger_power);
+
+    CHARGER_ACTUAL_CURRENT_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.charge_state.charger_actual_current);
+
+    SPEED_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.drive_state.speed.unwrap_or(0.0_f64));
+
+    POWER_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.drive_state.power);
+
+    ODOMETER_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.vehicle_state.odometer);
+
+    INSIDE_TEMPERATURE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.climate_state.inside_temp);
+
+    OUTSIDE_TEMPERATURE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.climate_state.outside_temp);
+
+    DRIVER_TEMPERATURE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.climate_state.driver_temp_setting);
+
+    PASSENGER_TEMPERATURE_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.climate_state.passenger_temp_setting);
+
+    GEO_LAT_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.drive_state.latitude);
+
+    GEO_LONG_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.drive_state.longitude);
+
+    GEO_HEADING_GAUGE
+        .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
+        .set(vehicle_data.drive_state.heading);
+
+    car_state
+}
+
+#[derive(Debug, Clone)]
+pub enum CarState {
+    Parked(VehicleData),
+    Charging(VehicleData),
+    Driving(VehicleData),
+    Unknown,
+}
+
+impl CarState {
+    pub fn is_parked(&self) -> bool {
+        match self {
+            CarState::Parked(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn wait(&self) -> Duration {
         match self {
             CarState::Parked(_) => {
-                Duration::from_secs(15 * 60)
+                Duration::from_secs(30)
             }
             CarState::Charging(v) => {
                 if v.charge_state.fast_charger_present {
@@ -139,11 +329,12 @@ impl<'a> CarState<'a> {
             CarState::Driving(_) => {
                 Duration::from_secs(5)
             }
+            CarState::Unknown => Duration::from_secs(30)
         }
     }
 }
 
-impl<'a> Display for CarState<'a> {
+impl<'a> Display for CarState {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             CarState::Parked(_) => {
@@ -155,129 +346,93 @@ impl<'a> Display for CarState<'a> {
             CarState::Driving(_) => {
                 write!(f, "Driving")
             }
+            CarState::Unknown => {
+                write!(f, "Unknown")
+            }
         }
     }
 }
 
-impl<'a> From<&'a VehicleData> for CarState<'a> {
-    fn from(v: &'a VehicleData) -> Self {
+impl From<VehicleData> for CarState {
+    fn from(v: VehicleData) -> Self {
         let speed = v.drive_state.speed.unwrap_or_default();
         let shift = v.drive_state.shift_state.as_deref().unwrap_or_default();
         if shift.eq("R") || shift.eq("D") || shift.eq("N") || speed > 0.0 {
-            return CarState::Driving(&v);
+            return CarState::Driving(v.clone());
         }
         let charging_state = v.charge_state.charging_state.clone();
         if charging_state.eq("Disconnected") {
-            return CarState::Parked(&v);
+            return CarState::Parked(v.clone());
         }
-        CarState::Charging(&v)
+        CarState::Charging(v.clone())
     }
 }
 
 
-fn collect_vehicle_metrics(client: TeslaApiClient, vehicle: Vehicle, stop: Arc<AtomicBool>) -> Result<()> {
+fn collect_vehicle_metrics(client: TeslaApiClient, vehicle_id: &i64, stop: Arc<AtomicBool>) -> Result<()> {
     // TODO: reset error count after some duration
     let mut error_count = 0;
+    let mut car_state = CarState::Unknown;
+    let mut duration = Duration::from_secs(60);
 
     while !stop.load(Ordering::SeqCst) && error_count < 10 {
-        if let Err(err) = client.wake_vehicle_poll(&vehicle.id) {
-            warn!("Failed to wake up vehicle: error={:?}", err);
-        }
+        let vehicle = client.fetch_vehicle(&vehicle_id)?;
+        let mut is_online = vehicle.is_online();
+        let display_name = &vehicle.display_name;
+        let mut error: Option<String> = None;
 
-        match client.fetch_vehicle_data(&vehicle.id) {
-            Ok(vehicle_data) => {
-                let car_state = CarState::from(&vehicle_data);
-
-                BATTERY_LEVEL_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(i64::from(vehicle_data.charge_state.battery_level));
-
-                BATTERY_RANGE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.battery_range);
-
-                BATTERY_EST_RANGE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.est_battery_range);
-
-                BATTERY_IDEAL_RANGE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.ideal_battery_range);
-
-                TIME_TO_FULL_CHARGE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.time_to_full_charge);
-
-                CHARGE_RATE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.charge_rate);
-
-                CHARGER_VOLTAGE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.charger_voltage);
-
-                CHARGER_POWER_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.charger_power);
-
-                CHARGER_ACTUAL_CURRENT_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.charge_state.charger_actual_current);
-
-                SPEED_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.drive_state.speed.unwrap_or(0.0_f64));
-
-                POWER_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.drive_state.power);
-
-                ODOMETER_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.vehicle_state.odometer);
-
-                INSIDE_TEMPERATURE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.climate_state.inside_temp);
-
-                OUTSIDE_TEMPERATURE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.climate_state.outside_temp);
-
-                DRIVER_TEMPERATURE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.climate_state.driver_temp_setting);
-
-                PASSENGER_TEMPERATURE_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.climate_state.passenger_temp_setting);
-
-                GEO_LAT_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.drive_state.latitude);
-
-                GEO_LONG_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.drive_state.longitude);
-
-                GEO_HEADING_GAUGE
-                    .with_label_values(&[&vehicle_data.display_name, &car_state.to_string()])
-                    .set(vehicle_data.drive_state.heading);
-
-
-                let duration = car_state.wait();
-                info!("Collected vehicle metrics: Vehicle=\"{}\" CarState={} Waiting={:?}", &vehicle.display_name, car_state, duration);
-                sleep(duration);
+        match (is_online, &car_state) {
+            (false, CarState::Parked(_)) => {
+                duration = Duration::from_secs(30);
             }
-            Err(err) => {
-                error_count += 1;
-                error!("Failed to fetch vehicle data: error_count={} error={:?}", error_count, err);
-                sleep(Duration::from_secs(60));
+            (false, _) => {
+                match client.wake_vehicle_poll(&vehicle_id) {
+                    Ok(_) => {
+                        is_online = true;
+                        info!("Woke up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\"",
+                              display_name, car_state, is_online);
+                    }
+                    Err(err) => {
+                        duration = Duration::from_secs(60);
+                        error = Some(format!("Failed to wake up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"true\" error_count=\"{}\" Waiting=\"{:?}\" error=\"{:?}\"",
+                                             display_name, car_state, error_count, err, duration));
+                        error_count += error_count;
+                    }
+                }
+            }
+            (true, _) => {
+                match client.fetch_vehicle_data(&vehicle_id) {
+                    Ok(vehicle_data) => {
+                        car_state = record(&vehicle_data);
+                        duration = car_state.wait();
+                        error_count = 0;
+                    }
+                    Err(err) => {
+                        car_state = CarState::Unknown;
+                        error_count += 1;
+                        duration = Duration::from_secs(60);
+                        error = Some(format!("Failed to fetch vehicle data: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" error_count=\"{}\" Waiting=\"{:?}\" error=\"{:?}\"",
+                                             display_name, car_state, is_online, error_count, duration, err));
+                    }
+                }
             }
         }
+
+        match error {
+            None => {
+                info!("Collected vehicle metrics: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" Waiting=\"{:?}\"",
+                      display_name, car_state, is_online, duration);
+            }
+            Some(message) => {
+                warn!("{}", message);
+            }
+        }
+
+        sleep(duration);
     }
     Ok(())
 }
+
 
 fn start_jobs() -> Result<JobHandles> {
     let client = TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"))?;
@@ -288,7 +443,7 @@ fn start_jobs() -> Result<JobHandles> {
         let s = handles.get_stop();
         let c = client.clone();
         handles.add_handle(thread::spawn(move || {
-            if let Err(err) = collect_vehicle_metrics(c, v, s) {
+            if let Err(err) = collect_vehicle_metrics(c, &v.id, s) {
                 warn!("Failed to collect vehicle metrics: {:?}", err);
             }
         }));
@@ -346,102 +501,7 @@ impl Fairing for Poller {
     }
 
     fn on_attach(&self, rocket: Rocket) -> Result<Rocket, Rocket> {
-        let prometheus = PrometheusMetrics::new();
-
-        prometheus
-            .registry()
-            .register(Box::new(BATTERY_LEVEL_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(BATTERY_RANGE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(BATTERY_EST_RANGE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(BATTERY_IDEAL_RANGE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(CHARGER_VOLTAGE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(CHARGER_POWER_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(CHARGER_ACTUAL_CURRENT_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(TIME_TO_FULL_CHARGE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(CHARGE_RATE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(SPEED_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(POWER_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(ODOMETER_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(INSIDE_TEMPERATURE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(OUTSIDE_TEMPERATURE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(DRIVER_TEMPERATURE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(PASSENGER_TEMPERATURE_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(GEO_LAT_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(GEO_LONG_GAUGE.clone()))
-            .unwrap();
-
-        prometheus
-            .registry()
-            .register(Box::new(GEO_HEADING_GAUGE.clone()))
-            .unwrap();
+        let prometheus = register();
 
         Ok(rocket
             .attach(prometheus.clone())
