@@ -116,6 +116,16 @@ static GEO_HEADING_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
         .expect("Could not create lazy GaugeVec")
 });
 
+static CAR_STATE_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
+    IntGaugeVec::new(opts!("tesla_car_state", "Car State"), &["car_name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
+static CAR_ONLINE_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
+    IntGaugeVec::new(opts!("tesla_is_online", "Is vehicle online"), &["car_name"])
+        .expect("Could not create lazy GaugeVec")
+});
+
 fn register() -> PrometheusMetrics {
     let prometheus = PrometheusMetrics::new();
 
@@ -213,6 +223,17 @@ fn register() -> PrometheusMetrics {
         .registry()
         .register(Box::new(GEO_HEADING_GAUGE.clone()))
         .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(CAR_STATE_GAUGE.clone()))
+        .unwrap();
+
+    prometheus
+        .registry()
+        .register(Box::new(CAR_ONLINE_GAUGE.clone()))
+        .unwrap();
+
     prometheus
 }
 
@@ -307,6 +328,15 @@ pub enum CarState {
 }
 
 impl CarState {
+    pub fn value(&self) -> i64 {
+        match self {
+            CarState::Unknown => 0,
+            CarState::Parked(_) => 1,
+            CarState::Charging(_) => 2,
+            CarState::Driving(_) => 3,
+        }
+    }
+
     pub fn is_parked(&self) -> bool {
         match self {
             CarState::Parked(_) => true,
@@ -417,6 +447,14 @@ fn collect_vehicle_metrics(client: TeslaApiClient, vehicle_id: &i64, stop: Arc<A
                 }
             }
         }
+
+        CAR_STATE_GAUGE
+            .with_label_values(&[&display_name])
+            .set(car_state.value());
+
+        CAR_ONLINE_GAUGE
+            .with_label_values(&[&display_name])
+            .set(if is_online { 1 } else { 0 });
 
         match error {
             None => {
