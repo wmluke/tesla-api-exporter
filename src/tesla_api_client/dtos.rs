@@ -106,6 +106,19 @@ pub struct VehicleDriveState {
     pub timestamp: i64,
 }
 
+impl VehicleDriveState {
+    pub fn shift_state_value(&self) -> i64 {
+        match &self.shift_state.as_deref() {
+            Some("R") => -1,
+            Some("P") => 0,
+            Some("N") => 1,
+            Some("D") => 2,
+            Some(_) => 0,
+            None => 0,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleClimateState {
     pub battery_heater: bool,
