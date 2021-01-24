@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use std::collections::HashMap;
+use serde_json::Value;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum TeslaApiError {
@@ -45,18 +47,11 @@ pub struct AuthToken {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Vehicle {
     pub id: i64,
-    pub id_s: String,
-    pub vehicle_id: i64,
-    pub vin: String,
     pub display_name: String,
-    pub option_codes: String,
-    // color: String,
-    pub tokens: Vec<String>,
     pub state: String,
-    pub calendar_enabled: bool,
-    pub api_version: i32,
-    // backseat_token: String,
-    // backseat_token_updated_at: i64,
+
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 impl Vehicle {
@@ -72,38 +67,29 @@ impl Vehicle {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleData {
     pub id: i64,
-    pub id_s: String,
-    pub user_id: i64,
-    pub vehicle_id: i64,
-    pub vin: String,
     pub display_name: String,
-    pub option_codes: String,
-    pub access_type: String,
-    pub tokens: Vec<String>,
     pub state: String,
-    pub calendar_enabled: bool,
-    pub api_version: i32,
     pub drive_state: VehicleDriveState,
     pub climate_state: VehicleClimateState,
     pub charge_state: VehicleChargeState,
-    pub gui_settings: VehicleGUIState,
     pub vehicle_state: VehicleState,
+
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleDriveState {
-    pub gps_as_of: i64,
     pub heading: f64,
     pub latitude: f64,
     pub longitude: f64,
-    pub native_latitude: f32,
-    pub native_location_supported: i32,
-    pub native_longitude: f32,
-    pub native_type: String,
     pub power: f64,
     pub shift_state: Option<String>,
     pub speed: Option<f64>,
     pub timestamp: i64,
+
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 impl VehicleDriveState {
@@ -121,186 +107,43 @@ impl VehicleDriveState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleClimateState {
-    pub battery_heater: bool,
-    // pub battery_heater_no_power: null,
-    pub climate_keeper_mode: String,
-    pub defrost_mode: i32,
     pub driver_temp_setting: f64,
-    pub fan_status: i32,
     pub inside_temp: f64,
-    pub is_auto_conditioning_on: bool,
-    pub is_climate_on: bool,
-    pub is_front_defroster_on: bool,
-    pub is_preconditioning: bool,
-    pub is_rear_defroster_on: bool,
-    pub left_temp_direction: f64,
-    pub max_avail_temp: f64,
-    pub min_avail_temp: f64,
     pub outside_temp: f64,
     pub passenger_temp_setting: f64,
-    pub remote_heater_control_enabled: bool,
-    pub right_temp_direction: f64,
-    pub seat_heater_left: i32,
-    pub seat_heater_right: i32,
-    pub side_mirror_heaters: bool,
     pub timestamp: i64,
-    pub wiper_blade_heater: bool,
+
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleChargeState {
-    pub battery_heater_on: bool,
     pub battery_level: i32,
+    pub usable_battery_level: i32,
     pub battery_range: f64,
-    pub charge_current_request: i32,
-    pub charge_current_request_max: i32,
-    pub charge_enable_request: bool,
-    pub charge_energy_added: f64,
-    pub charge_limit_soc: i32,
-    pub charge_limit_soc_max: i32,
-    pub charge_limit_soc_min: i32,
-    pub charge_limit_soc_std: i32,
-    pub charge_miles_added_ideal: f64,
-    pub charge_miles_added_rated: f64,
-    // pub charge_port_cold_weather_mode: Option<String>,
-    pub charge_port_door_open: bool,
-    pub charge_port_latch: String,
     pub charge_rate: f64,
-    pub charge_to_max_range: bool,
     pub charger_actual_current: f64,
-    pub charger_phases: Option<i32>,
-    pub charger_pilot_current: f64,
     pub charger_power: f64,
     pub charger_voltage: f64,
     pub charging_state: String,
-    pub conn_charge_cable: String,
     pub est_battery_range: f64,
-    pub fast_charger_brand: String,
     pub fast_charger_present: bool,
-    pub fast_charger_type: String,
     pub ideal_battery_range: f64,
-    pub managed_charging_active: bool,
-    managed_charging_start_time: Option<i64>,
-    pub managed_charging_user_canceled: bool,
-    pub max_range_charge_counter: i32,
-    pub minutes_to_full_charge: i32,
-    // pub not_enough_power_to_heat: null,
-    pub scheduled_charging_pending: bool,
-    scheduled_charging_start_time: Option<i64>,
-    pub time_to_full_charge: f64,
+    pub minutes_to_full_charge: i64,
     pub timestamp: i64,
-    pub trip_charging: bool,
-    pub usable_battery_level: i32,
-    // user_charge_enable_request: null
-}
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VehicleGUIState {
-    pub gui_24_hour_time: bool,
-    pub gui_charge_rate_units: String,
-    pub gui_distance_units: String,
-    pub gui_range_display: String,
-    pub gui_temperature_units: String,
-    pub show_range_units: bool,
-    pub timestamp: i64,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleState {
-    pub api_version: i32,
-    // pub autopark_state_v2: String,
-    // pub autopark_style: String,
-    pub calendar_supported: bool,
-    pub car_version: String,
-    pub center_display_state: i32,
-    pub df: i32,
-    pub dr: i32,
-    pub fd_window: i32,
-    pub fp_window: i32,
-    pub ft: i32,
-    // pub homelink_device_count: i32,
-    // pub homelink_nearby: bool,
-    pub is_user_present: bool,
-    // pub last_autopark_error: String,
-    pub locked: bool,
-    pub media_state: VehicleMediaState,
-    pub notifications_supported: bool,
     pub odometer: f64,
-    pub parsed_calendar_supported: bool,
-    pub pf: i32,
-    pub pr: i32,
-    pub rd_window: i32,
-    pub remote_start: bool,
-    pub remote_start_enabled: bool,
-    pub remote_start_supported: bool,
-    pub rp_window: i32,
-    pub rt: i32,
-    pub sentry_mode: bool,
-    pub sentry_mode_available: bool,
-    #[serde(default)]
-    pub smart_summon_available: bool,
-    #[serde(default)]
-    pub summon_standby_mode_enabled: bool,
-    #[serde(default)]
-    pub sun_roof_percent_open: i32,
-    #[serde(default)]
-    pub sun_roof_state: String,
     pub timestamp: i64,
-    pub valet_mode: bool,
-    #[serde(default)]
-    pub valet_pin_needed: bool,
-    pub vehicle_name: Option<String>,
-}
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VehicleMediaState {
-    pub remote_control_enabled: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VehicleSoftwareState {
-    pub download_perc: i32,
-    pub expected_duration_sec: i64,
-    pub install_perc: i32,
-    pub status: String,
-    pub version: String,
-}
-
-pub struct VehicleSpeedLimitModeState {
-    pub active: bool,
-    pub current_limit_mph: i64,
-    pub max_limit_mph: i32,
-    pub min_limit_mph: i32,
-    pub pin_code_set: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VehicleConfig {
-    pub can_accept_navigation_requests: bool,
-    pub can_actuate_trunks: bool,
-    pub car_special_type: String,
-    pub car_type: String,
-    pub charge_port_type: String,
-    pub default_charge_to_max: bool,
-    pub ece_restrictions: bool,
-    pub eu_vehicle: bool,
-    pub exterior_color: String,
-    pub has_air_suspension: bool,
-    pub has_ludicrous_mode: bool,
-    pub motorized_charge_port: bool,
-    pub plg: bool,
-    pub rear_seat_heaters: i32,
-    // pub rear_seat_type: i32,
-    pub rhd: bool,
-    pub roof_color: String,
-    // pub seat_type: i32,
-    pub spoiler_type: String,
-    // pub sun_roof_installed: i32,
-    pub third_row_seats: String,
-    pub timestamp: i64,
-    pub trim_badging: String,
-    pub use_range_badging: bool,
-    pub wheel_type: String,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

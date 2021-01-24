@@ -46,8 +46,8 @@ static CHARGE_RATE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
         .expect("Could not create lazy GaugeVec")
 });
 
-static TIME_TO_FULL_CHARGE_GAUGE: Lazy<GaugeVec> = Lazy::new(|| {
-    GaugeVec::new(opts!("tesla_charge_state_minutes_to_full_charge", "Time to Full Charge"), &["car_name"])
+static TIME_TO_FULL_CHARGE_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
+    IntGaugeVec::new(opts!("tesla_charge_state_minutes_to_full_charge", "Time to Full Charge"), &["car_name"])
         .expect("Could not create lazy GaugeVec")
 });
 
@@ -268,7 +268,7 @@ fn record(vehicle_data: &VehicleData) -> CarState {
 
     TIME_TO_FULL_CHARGE_GAUGE
         .with_label_values(&[&vehicle_data.display_name])
-        .set(vehicle_data.charge_state.time_to_full_charge);
+        .set(vehicle_data.charge_state.minutes_to_full_charge);
 
     CHARGE_RATE_GAUGE
         .with_label_values(&[&vehicle_data.display_name])
@@ -415,11 +415,10 @@ impl From<VehicleData> for CarState {
 
 fn collect_vehicle_metrics(client: TeslaApiClient, vehicle_id: &i64, stop: Arc<AtomicBool>) -> Result<()> {
     // TODO: reset error count after some duration
-    let mut error_count = 0;
     let mut car_state = CarState::Unknown;
     let mut duration = Duration::from_secs(60);
 
-    while !stop.load(Ordering::SeqCst) && error_count < 10 {
+    while !stop.load(Ordering::SeqCst) {
         let vehicle = client.fetch_vehicle(&vehicle_id)?;
         let mut is_online = vehicle.is_online();
         let display_name = &vehicle.display_name;
@@ -438,9 +437,8 @@ fn collect_vehicle_metrics(client: TeslaApiClient, vehicle_id: &i64, stop: Arc<A
                     }
                     Err(err) => {
                         duration = Duration::from_secs(60);
-                        error = Some(format!("Failed to wake up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"true\" error_count=\"{}\" Waiting=\"{:?}\" error=\"{:?}\"",
-                                             display_name, car_state, error_count, err, duration));
-                        error_count += error_count;
+                        error = Some(format!("Failed to wake up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"true\" Waiting=\"{:?}\" error=\"{:?}\"",
+                                             display_name, car_state, err, duration));
                     }
                 }
             }
@@ -449,14 +447,12 @@ fn collect_vehicle_metrics(client: TeslaApiClient, vehicle_id: &i64, stop: Arc<A
                     Ok(vehicle_data) => {
                         car_state = record(&vehicle_data);
                         duration = car_state.wait();
-                        error_count = 0;
                     }
                     Err(err) => {
                         car_state = CarState::Unknown;
-                        error_count += 1;
                         duration = Duration::from_secs(60);
-                        error = Some(format!("Failed to fetch vehicle data: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" error_count=\"{}\" Waiting=\"{:?}\" error=\"{:?}\"",
-                                             display_name, car_state, is_online, error_count, duration, err));
+                        error = Some(format!("Failed to fetch vehicle data: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" Waiting=\"{:?}\" error=\"{:?}\"",
+                                             display_name, car_state, is_online, duration, err));
                     }
                 }
             }
