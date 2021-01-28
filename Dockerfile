@@ -1,9 +1,9 @@
-FROM --platform=$BUILDPLATFORM alpine:latest
+FROM --platform=$TARGETPLATFORM debian:stable-slim
 ARG TARGETPLATFORM
-ARG BUILDPLATFORM
 
-RUN apk --no-cache add ca-certificates
+WORKDIR /app
 
-COPY target/armv7-unknown-linux-musleabihf/release/tesla-metrics /app/
+COPY target/armv7-unknown-linux-musleabihf/release/tesla-metrics .
+COPY log4rs.yml .
 
 CMD ["/app/tesla-metrics"]

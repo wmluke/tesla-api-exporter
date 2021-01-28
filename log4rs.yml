@@ -3,7 +3,7 @@ appenders:
   stdout:
     kind: console
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S)} {h({l:>6.6})} {t:<6.6} -> {m} [{I}]{n}   - fooooo barrr"
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} {h({l:>6.6})} {t:<6.6} -> {m} [{I}]{n}"
 root:
   level: info
   appenders:
