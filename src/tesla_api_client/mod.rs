@@ -1,3 +1,4 @@
+use std::env;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -23,9 +24,23 @@ pub struct TeslaApiClient {
     auth_token: AuthToken,
 }
 
+pub struct Auth {
+    pub email: String,
+    pub password: String,
+}
+
+impl Auth {
+    pub fn from_env() -> Self {
+        Auth {
+            email: env::var("TESLA_EMAIL").expect("TESLA_EMAIL environment variable is undefined"),
+            password: env::var("TESLA_PASSWORD").expect("TESLA_PASSWORD environment variable is undefined"),
+        }
+    }
+}
+
 
 impl TeslaApiClient {
-    pub fn authenticate(email: &str, password: &str) -> Result<TeslaApiClient> {
+    pub fn authenticate(auth: Auth) -> Result<TeslaApiClient> {
         let agent: Agent = ureq::AgentBuilder::new()
             .timeout_read(Duration::from_secs(5))
             .timeout_write(Duration::from_secs(5))
@@ -44,8 +59,8 @@ impl TeslaApiClient {
                 "grant_type": "password",
                 "client_id": CLIENT_ID,
                 "client_secret": CLIENT_SECRET,
-                "email": email,
-                "password": password,
+                "email": auth.email,
+                "password": auth.password,
             }));
 
         let auth_token = TeslaApiClient::handle_result::<AuthToken>(result)?;
@@ -109,6 +124,10 @@ impl TeslaApiClient {
         match result {
             Err(Status(401, _)) => {
                 return Err(TeslaApiError::LoginFailure.into());
+            }
+            Err(Status(444, response)) => {
+                let text: String = response.into_string()?;
+                return Err(TeslaApiError::Blocked(text).into());
             }
             Err(Status(_, response)) => {
                 let text: String = response.into_string()?;

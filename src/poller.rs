@@ -1,13 +1,13 @@
 use core::fmt;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::thread::{JoinHandle, sleep};
 use std::time::Duration;
 
-use anyhow::Result;
-use log::{info, warn};
+use anyhow::{Result};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::Rocket;
@@ -16,10 +16,9 @@ use rocket_prometheus::{
     PrometheusMetrics,
 };
 use rocket_prometheus::prometheus::GaugeVec;
-use serde::export::Formatter;
 
-use crate::tesla_api_client::dtos::VehicleData;
-use crate::tesla_api_client::TeslaApiClient;
+use crate::tesla_api_client::{Auth, TeslaApiClient};
+use crate::tesla_api_client::dtos::{VehicleData};
 
 static BATTERY_LEVEL_GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
     IntGaugeVec::new(opts!("tesla_charge_state_battery_level", "Battery Level (%)"), &["car_name"])
@@ -419,84 +418,98 @@ fn collect_vehicle_metrics(client: TeslaApiClient, vehicle_id: &i64, stop: Arc<A
     let mut duration = Duration::from_secs(60);
 
     while !stop.load(Ordering::SeqCst) {
-        let vehicle = client.fetch_vehicle(&vehicle_id)?;
-        let mut is_online = vehicle.is_online();
-        let display_name = &vehicle.display_name;
-        let mut error: Option<String> = None;
-
-        match (is_online, &car_state) {
-            (false, CarState::Parked(_)) => {
-                duration = Duration::from_secs(30);
+        match client.fetch_vehicle(&vehicle_id) {
+            Err(err) => {
+                warn!("Failed to fetch vehicle: {}", err);
+                sleep(duration);
             }
-            (false, _) => {
-                match client.wake_vehicle_poll(&vehicle_id) {
-                    Ok(_) => {
-                        is_online = true;
-                        info!("Woke up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\"",
-                              display_name, car_state, is_online);
+            Ok(vehicle) => {
+                let mut is_online = vehicle.is_online();
+                let display_name = &vehicle.display_name;
+                let mut error: Option<String> = None;
+
+                match (is_online, &car_state) {
+                    (false, CarState::Parked(_)) => {
+                        duration = Duration::from_secs(30);
                     }
-                    Err(err) => {
-                        duration = Duration::from_secs(60);
-                        error = Some(format!("Failed to wake up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"true\" Waiting=\"{:?}\" error=\"{:?}\"",
-                                             display_name, car_state, err, duration));
+                    (false, _) => {
+                        match client.wake_vehicle_poll(&vehicle_id) {
+                            Ok(_) => {
+                                is_online = true;
+                                info!("Woke up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\"",
+                                      display_name, car_state, is_online);
+                            }
+                            Err(err) => {
+                                duration = Duration::from_secs(60);
+                                error = Some(format!("Failed to wake up vehicle: Vehicle=\"{}\" CarState=\"{}\" is_online=\"true\" Waiting=\"{:?}\" error=\"{:?}\"",
+                                                     display_name, car_state, err, duration));
+                            }
+                        }
+                    }
+                    (true, _) => {
+                        match client.fetch_vehicle_data(&vehicle_id) {
+                            Ok(vehicle_data) => {
+                                car_state = record(&vehicle_data);
+                                duration = car_state.wait();
+                            }
+                            Err(err) => {
+                                car_state = CarState::Unknown;
+                                duration = Duration::from_secs(60);
+                                error = Some(format!("Failed to fetch vehicle data: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" Waiting=\"{:?}\" error=\"{:?}\"",
+                                                     display_name, car_state, is_online, duration, err));
+                            }
+                        }
                     }
                 }
-            }
-            (true, _) => {
-                match client.fetch_vehicle_data(&vehicle_id) {
-                    Ok(vehicle_data) => {
-                        car_state = record(&vehicle_data);
-                        duration = car_state.wait();
+
+                CAR_STATE_GAUGE
+                    .with_label_values(&[&display_name])
+                    .set(car_state.value());
+
+                CAR_ONLINE_GAUGE
+                    .with_label_values(&[&display_name])
+                    .set(if is_online { 1 } else { 0 });
+
+                match error {
+                    None => {
+                        info!("Collected vehicle metrics: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" Waiting=\"{:?}\"",
+                              display_name, car_state, is_online, duration);
                     }
-                    Err(err) => {
-                        car_state = CarState::Unknown;
-                        duration = Duration::from_secs(60);
-                        error = Some(format!("Failed to fetch vehicle data: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" Waiting=\"{:?}\" error=\"{:?}\"",
-                                             display_name, car_state, is_online, duration, err));
+                    Some(message) => {
+                        warn!("{}", message);
                     }
                 }
+
+                sleep(duration);
             }
         }
-
-        CAR_STATE_GAUGE
-            .with_label_values(&[&display_name])
-            .set(car_state.value());
-
-        CAR_ONLINE_GAUGE
-            .with_label_values(&[&display_name])
-            .set(if is_online { 1 } else { 0 });
-
-        match error {
-            None => {
-                info!("Collected vehicle metrics: Vehicle=\"{}\" CarState=\"{}\" is_online=\"{}\" Waiting=\"{:?}\"",
-                      display_name, car_state, is_online, duration);
-            }
-            Some(message) => {
-                warn!("{}", message);
-            }
-        }
-
-        sleep(duration);
     }
     Ok(())
 }
 
 
 fn start_jobs() -> Result<JobHandles> {
-    let client = TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"))?;
-    let mut handles = JobHandles::default();
-    let vehicles = client.fetch_vehicles()?;
-    for v in vehicles {
-        info!("Started collecting vehicle metrics: Vehicle=\"{}\"", &v.display_name);
-        let s = handles.get_stop();
-        let c = client.clone();
-        handles.add_handle(thread::spawn(move || {
-            if let Err(err) = collect_vehicle_metrics(c, &v.id, s) {
-                warn!("Failed to collect vehicle metrics: {:?}", err);
+    match TeslaApiClient::authenticate(Auth::from_env()) {
+        Err(err) => {
+            error!("Failed to authenticate with tesla API {}", err);
+            Err(err)
+        }
+        Ok(client) => {
+            let mut handles = JobHandles::default();
+            let vehicles = client.fetch_vehicles()?;
+            for v in vehicles {
+                info!("Started collecting vehicle metrics: Vehicle=\"{}\"", &v.display_name);
+                let s = handles.get_stop();
+                let c = client.clone();
+                handles.add_handle(thread::spawn(move || {
+                    if let Err(err) = collect_vehicle_metrics(c, &v.id, s) {
+                        warn!("Failed to collect vehicle metrics: {:?}", err);
+                    }
+                }));
             }
-        }));
+            Ok(handles)
+        }
     }
-    Ok(handles)
 }
 
 pub struct JobHandles {

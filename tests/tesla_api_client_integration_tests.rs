@@ -1,14 +1,14 @@
-#[macro_use]
-extern crate dotenv_codegen;
-
 use anyhow::Result;
+use dotenv::dotenv;
 
-use tesla_metrics::tesla_api_client::TeslaApiClient;
+use tesla_metrics::tesla_api_client::{Auth, TeslaApiClient};
 
 #[test]
 fn should_authenticate_and_refresh_authentication() -> Result<()> {
+    dotenv().ok();
+
     let auth_result =
-        TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"));
+        TeslaApiClient::authenticate(Auth::from_env());
 
     assert_eq!(auth_result.is_ok(), true);
 
@@ -23,7 +23,10 @@ fn should_authenticate_and_refresh_authentication() -> Result<()> {
 
 #[test]
 fn should_fail_to_authenticate() -> Result<()> {
-    let result = TeslaApiClient::authenticate("foo@bar.com", "1234");
+    let result = TeslaApiClient::authenticate(Auth {
+        email: "foo@bar.com".to_string(),
+        password: "1234".to_string(),
+    });
     assert_eq!(result.is_err(), true);
     assert_eq!(
         result.unwrap_err().to_string(),
@@ -34,7 +37,9 @@ fn should_fail_to_authenticate() -> Result<()> {
 
 #[test]
 fn should_fetch_vehicles() -> Result<()> {
-    let client = TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"))?;
+    dotenv().ok();
+
+    let client = TeslaApiClient::authenticate(Auth::from_env())?;
 
     let vehicles = client.fetch_vehicles()?;
 
@@ -45,7 +50,9 @@ fn should_fetch_vehicles() -> Result<()> {
 
 #[test]
 fn should_fail_to_fetch_vehicle_data_bc_vehicle_is_unavailable() -> Result<()> {
-    let client = TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"))?;
+    dotenv().ok();
+
+    let client = TeslaApiClient::authenticate(Auth::from_env())?;
 
     let vehicles = client.fetch_vehicles()?;
 
@@ -69,7 +76,9 @@ fn should_fail_to_fetch_vehicle_data_bc_vehicle_is_unavailable() -> Result<()> {
 
 #[test]
 fn should_wake_up_the_vehicle() -> Result<()> {
-    let client = TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"))?;
+    dotenv().ok();
+
+    let client = TeslaApiClient::authenticate(Auth::from_env())?;
 
     let vehicles = client.fetch_vehicles()?;
 
@@ -86,7 +95,9 @@ fn should_wake_up_the_vehicle() -> Result<()> {
 
 #[test]
 fn should_fetch_all_vehicle_data() -> Result<()> {
-    let client = TeslaApiClient::authenticate(dotenv!("TESLA_EMAIL"), dotenv!("TESLA_PASSWORD"))?;
+    dotenv().ok();
+
+    let client = TeslaApiClient::authenticate(Auth::from_env())?;
 
     let vehicles_data = client.fetch_all_vehicles_data()?;
 

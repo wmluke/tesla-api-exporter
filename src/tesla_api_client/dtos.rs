@@ -17,6 +17,8 @@ pub enum TeslaApiError {
     JsonDeserializationError(String),
     #[error("Unknown Error")]
     Unknown,
+    #[error("Request was blocked: {0:?}")]
+    Blocked(String)
 }
 
 impl From<ErrorReply> for TeslaApiError {
