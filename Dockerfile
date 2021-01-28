@@ -1,9 +1,10 @@
 FROM --platform=$TARGETPLATFORM debian:stable-slim
 ARG TARGETPLATFORM
 
-WORKDIR /app
 
-COPY target/armv7-unknown-linux-musleabihf/release/tesla-metrics .
-COPY log4rs.yml .
+COPY target/armv7-unknown-linux-musleabihf/release/tesla-metrics /app/
+COPY log4rs.yml /log4rs.yaml
 
-CMD ["/app/tesla-metrics"]
+EXPOSE 3000
+
+ENTRYPOINT exec /app/tesla-metrics

@@ -489,6 +489,8 @@ fn collect_vehicle_metrics(client: TeslaApiClient, vehicle_id: &i64, stop: Arc<A
 
 
 fn start_jobs() -> Result<JobHandles> {
+    info!("Starting poller");
+
     match TeslaApiClient::authenticate(Auth::from_env()) {
         Err(err) => {
             error!("Failed to authenticate with tesla API {}", err);
