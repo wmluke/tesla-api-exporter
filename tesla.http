@@ -1,0 +1,17 @@
+### Get vehicles
+GET https://owner-api.teslamotors.com/api/1/vehicles
+User-Agent: tesla-metrics
+Content-Type: application/json
+Authorization: Bearer {{TESLA_AUTH_TOKEN}}
+
+### Refresh access token
+POST https://auth.tesla.com/oauth2/v3/token
+User-Agent: tesla-metrics
+Content-Type: application/json
+
+{
+  "grant_type": "refresh_token",
+  "client_id": "ownerapi",
+  "refresh_token": "{{TESLA_REFRESH_TOKEN}}",
+  "scope": "openid email offline_access"
+}

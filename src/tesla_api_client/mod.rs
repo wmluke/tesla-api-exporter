@@ -14,8 +14,7 @@ use crate::tesla_api_client::dtos::{
 pub mod dtos;
 
 static API_URL: &str = "https://owner-api.teslamotors.com";
-static CLIENT_ID: &str = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384";
-static CLIENT_SECRET: &str = "c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3";
+static AUTH_API_URL: &str = "https://auth.tesla.com";
 static USER_AGENT: &str = "tesla-metrics";
 
 #[derive(Debug, Clone)]
@@ -25,58 +24,40 @@ pub struct TeslaApiClient {
 }
 
 pub struct Auth {
-    pub email: String,
-    pub password: String,
+    pub access_token: String,
+    pub refresh_token: String,
 }
 
 impl Auth {
     pub fn from_env() -> Self {
         Auth {
-            email: env::var("TESLA_EMAIL").expect("TESLA_EMAIL environment variable is undefined"),
-            password: env::var("TESLA_PASSWORD").expect("TESLA_PASSWORD environment variable is undefined"),
+            access_token: env::var("TESLA_ACCESS_TOKEN").expect("TESLA_ACCESS_TOKEN environment variable is undefined"),
+            refresh_token: env::var("TESLA_REFRESH_TOKEN").expect("TESLA_REFRESH_TOKEN environment variable is undefined"),
         }
     }
 }
 
 
 impl TeslaApiClient {
-    pub fn authenticate(auth: Auth) -> Result<TeslaApiClient> {
+    pub fn create(auth_token: AuthToken) -> Result<TeslaApiClient> {
         let agent: Agent = ureq::AgentBuilder::new()
             .timeout_read(Duration::from_secs(5))
             .timeout_write(Duration::from_secs(5))
             .build();
 
-        let api_url = &format!(
-            "{api_url}/oauth/token?grant_type=password",
-            api_url = API_URL
-        );
-
-        let result = agent
-            .post(api_url)
-            .set("User-Agent", USER_AGENT,
-            )
-            .send_json(ureq::json!({
-                "grant_type": "password",
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "email": auth.email,
-                "password": auth.password,
-            }));
-
-        let auth_token = TeslaApiClient::handle_result::<AuthToken>(result)?;
         Ok(TeslaApiClient { agent, auth_token })
     }
 
     pub fn refresh_auth(&mut self) -> anyhow::Result<()> {
         let api_url = &format!(
-            "{api_url}/oauth/token?grant_type=refresh_token",
-            api_url = API_URL
+            "{api_url}/oauth2/v3/token",
+            api_url = AUTH_API_URL
         );
         let result = self.http_post(api_url)
             .send_json(ureq::json!({
                 "grant_type": "refresh_token",
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
+                "client_id": "ownerapi",
+                "scope": "openid email offline_access",
                 "refresh_token": &self.auth_token.refresh_token,
             }));
 

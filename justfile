@@ -1,3 +1,4 @@
+set dotenv-load
 export RUST_BACKTRACE := "full"
 
 build:

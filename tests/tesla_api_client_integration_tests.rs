@@ -1,14 +1,15 @@
 use anyhow::Result;
 use dotenv::dotenv;
 
-use tesla_metrics::tesla_api_client::{Auth, TeslaApiClient};
+use tesla_metrics::tesla_api_client::{TeslaApiClient};
+use tesla_metrics::tesla_api_client::dtos::AuthToken;
 
 #[test]
 fn should_authenticate_and_refresh_authentication() -> Result<()> {
     dotenv().ok();
 
     let auth_result =
-        TeslaApiClient::authenticate(Auth::from_env());
+        TeslaApiClient::create(AuthToken::from_env());
 
     assert_eq!(auth_result.is_ok(), true);
 
@@ -21,25 +22,25 @@ fn should_authenticate_and_refresh_authentication() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn should_fail_to_authenticate() -> Result<()> {
-    let result = TeslaApiClient::authenticate(Auth {
-        email: "foo@bar.com".to_string(),
-        password: "1234".to_string(),
-    });
-    assert_eq!(result.is_err(), true);
-    assert_eq!(
-        result.unwrap_err().to_string(),
-        "Failed to login"
-    );
-    Ok(())
-}
+// #[test]
+// fn should_fail_to_authenticate() -> Result<()> {
+//     let result = TeslaApiClient::authenticate(Auth {
+//         email: "foo@bar.com".to_string(),
+//         password: "1234".to_string(),
+//     });
+//     assert_eq!(result.is_err(), true);
+//     assert_eq!(
+//         result.unwrap_err().to_string(),
+//         "Failed to login"
+//     );
+//     Ok(())
+// }
 
 #[test]
 fn should_fetch_vehicles() -> Result<()> {
     dotenv().ok();
 
-    let client = TeslaApiClient::authenticate(Auth::from_env())?;
+    let client = TeslaApiClient::create(AuthToken::from_env())?;
 
     let vehicles = client.fetch_vehicles()?;
 
@@ -52,7 +53,7 @@ fn should_fetch_vehicles() -> Result<()> {
 fn should_fail_to_fetch_vehicle_data_bc_vehicle_is_unavailable() -> Result<()> {
     dotenv().ok();
 
-    let client = TeslaApiClient::authenticate(Auth::from_env())?;
+    let client = TeslaApiClient::create(AuthToken::from_env())?;
 
     let vehicles = client.fetch_vehicles()?;
 
@@ -78,7 +79,7 @@ fn should_fail_to_fetch_vehicle_data_bc_vehicle_is_unavailable() -> Result<()> {
 fn should_wake_up_the_vehicle() -> Result<()> {
     dotenv().ok();
 
-    let client = TeslaApiClient::authenticate(Auth::from_env())?;
+    let client = TeslaApiClient::create(AuthToken::from_env())?;
 
     let vehicles = client.fetch_vehicles()?;
 
@@ -97,7 +98,7 @@ fn should_wake_up_the_vehicle() -> Result<()> {
 fn should_fetch_all_vehicle_data() -> Result<()> {
     dotenv().ok();
 
-    let client = TeslaApiClient::authenticate(Auth::from_env())?;
+    let client = TeslaApiClient::create(AuthToken::from_env())?;
 
     let vehicles_data = client.fetch_all_vehicles_data()?;
 

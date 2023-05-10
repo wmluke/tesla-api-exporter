@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use std::collections::HashMap;
+use std::env;
 use serde_json::Value;
 
 #[derive(Error, Debug, PartialEq)]
@@ -18,7 +19,7 @@ pub enum TeslaApiError {
     #[error("Unknown Error")]
     Unknown,
     #[error("Request was blocked: {0:?}")]
-    Blocked(String)
+    Blocked(String),
 }
 
 impl From<ErrorReply> for TeslaApiError {
@@ -34,8 +35,15 @@ impl From<ErrorReply> for TeslaApiError {
 pub struct AuthToken {
     pub access_token: String,
     pub refresh_token: String,
-    pub token_type: String,
-    pub expires_in: i64,
+}
+
+impl AuthToken {
+    pub fn from_env() -> Self {
+        AuthToken {
+            access_token: env::var("TESLA_ACCESS_TOKEN").expect("TESLA_ACCESS_TOKEN environment variable is undefined"),
+            refresh_token: env::var("TESLA_REFRESH_TOKEN").expect("TESLA_REFRESH_TOKEN environment variable is undefined"),
+        }
+    }
 }
 
 /// # `vehicle_id` vs `id`
