@@ -2,12 +2,33 @@
 
 A prometheus exporter for the Tesla vehicle API.
 
-## Usage
+## Development
+
+Obtain your auth tokens are add them to `.env`.  See "Auth Tokens" below on way to generate auth tokens.
 
 ```shell
 cp .env.example .env
 cargo run
 ```
+
+## Deployment
+
+### Build it
+
+```shell
+cargo build --release
+TESLA_ACCESS_TOKEN="xyz" TESLA_REFRESH_TOKEN="abc" target/release/tesla-api-exporter
+```
+
+### Run it
+
+```shell
+TESLA_ACCESS_TOKEN="xyz" TESLA_REFRESH_TOKEN="abc" target/release/tesla-api-exporter
+```
+Alternatively, you can place `TESLA_ACCESS_TOKEN` and `TESLA_REFRESH_TOKEN` in a `.env` file
+in your cwd.
+
+
 ## Exported Metrics
      
 * tesla_charge_state_battery_level
