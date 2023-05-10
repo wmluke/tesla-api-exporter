@@ -9,4 +9,4 @@ build-static-armv7:
 
 build-docker-arm: build-static-armv7
     docker buildx use armbuilder
-    DOCKER_BUILDKIT=1 docker buildx build --push --platform linux/arm64 -t wmluke/tesla-metrics .
+    DOCKER_BUILDKIT=1 docker buildx build --push --platform linux/arm64 -t wmluke/tesla-api-exporter .

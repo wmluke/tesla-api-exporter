@@ -1,8 +1,8 @@
 use anyhow::Result;
 use dotenv::dotenv;
 
-use tesla_metrics::tesla_api_client::{TeslaApiClient};
-use tesla_metrics::tesla_api_client::dtos::AuthToken;
+use tesla_api_exporter::tesla_api_client::{TeslaApiClient};
+use tesla_api_exporter::tesla_api_client::dtos::AuthToken;
 
 #[test]
 fn should_authenticate_and_refresh_authentication() -> Result<()> {

@@ -15,7 +15,7 @@ pub mod dtos;
 
 static API_URL: &str = "https://owner-api.teslamotors.com";
 static AUTH_API_URL: &str = "https://auth.tesla.com";
-static USER_AGENT: &str = "tesla-metrics";
+static USER_AGENT: &str = "tesla-api-exporter";
 
 #[derive(Debug, Clone)]
 pub struct TeslaApiClient {

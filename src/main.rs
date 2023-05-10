@@ -8,7 +8,7 @@ use dotenv::dotenv;
 use log::{info, warn};
 use log4rs;
 
-use tesla_metrics::poller::Poller;
+use tesla_api_exporter::poller::Poller;
 
 fn main() {
     dotenv().ok();

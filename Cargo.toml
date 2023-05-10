@@ -1,5 +1,5 @@
 [package]
-name = "tesla-metrics"
+name = "tesla-api-exporter"
 version = "0.1.0"
 authors = ["W. Luke bunselmeyer <luke@bunselmeyer.net>"]
 edition = "2018"

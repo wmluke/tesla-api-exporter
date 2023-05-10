@@ -2,9 +2,9 @@ FROM --platform=$TARGETPLATFORM debian:stable-slim
 ARG TARGETPLATFORM
 
 
-COPY target/armv7-unknown-linux-musleabihf/release/tesla-metrics /app/
+COPY target/armv7-unknown-linux-musleabihf/release/tesla-api-exporter /app/
 COPY log4rs.yml /log4rs.yaml
 
-EXPOSE 3000
+EXPOSE 3001
 
-ENTRYPOINT exec /app/tesla-metrics
+ENTRYPOINT exec /app/tesla-api-exporter
